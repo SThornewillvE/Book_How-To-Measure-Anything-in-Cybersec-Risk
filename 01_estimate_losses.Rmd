@@ -1,0 +1,151 @@
+---
+title: 'Chapter 3: Model Now!'
+subtitle: 'Estimate Losses'
+author: "Simon Thornewill von Essen"
+date: "14 2 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+How do we measure the impact of an effect that occurs some amount of the time?
+
+1. We define list of risks
+2. We define a timescale where it might happen
+3. We assign a prob of occuring
+4. We create a 90% CI for losses
+5. Get CI from multiple expers where possible
+
+We can then use these stats to calculate the impact.
+
+Say, we have events A-D with the following probabilities
+
+```{r}
+P_n <- c(0.1, 0.05, 0.01, 0.03)
+```
+
+We can generate a monte carlo simulation whether these events happen.
+
+```{r}
+as.numeric(runif(1) < P_n)
+```
+
+Next, we want to define our lower and upper bounds
+
+```{r}
+UB_n <- c(5e5, 1e7, 2.5e7, 1.5e7)
+LB_n <- c(5e4, 1e5, 2e5, 1e5)
+```
+
+From the upper and lower bounds, we can calculate our parameters for normal distributions
+
+```{r}
+E_lnX_n <- (log(UB_n) + log(LB_n))/2
+Std_lnX_n <- (log(UB_n) - log(LB_n))/3.29  # How did we get the 3.29 number?
+```
+
+Apparently you can infer the standard deviation from a confidene interval (given you know to what level of confidence it is)
+estimating. The number that we divide the difference of the two bounds by is equal to the following equation
+
+$$s^2 = \frac{\sqrt{n-1}(\textrm{UB}-\textrm{LB})}{2*t_{\textrm{alpha, df, tails}}}$$
+So, if you have 19 samples for a confidence interval between `6.36` and `7.54` then you calculate it as such:
+
+```{r}
+get_std <- function(n, UB, LB, alpha){
+  df <- n-1
+  (sqrt(n) * (UB - LB)) / (2 * qt(1-alpha/2, df))  # Note that you need to divide alpha by two to get the two-tail
+}
+
+get_std(19, 7.54, 6.36, 0.05)
+```
+
+What the author does is something much simpler. Instead, he assumes the sample size is 1 and uses a Z statistic instead of a
+t statistic.
+
+$$s^2 \approx \frac{\sqrt{n}(\textrm{UB}-\textrm{LB})}{2*Z_{\textrm{alpha, tail}}}, n=1, tail=2$$
+
+There is an implementation below.
+
+```{r}
+alpha <- 0.10
+tails <- 2
+2 * qnorm((1-(alpha/tails)), 0, 1)
+```
+
+Using this method, the standard deviation calculated by my example using a t statistic is as follows
+
+```{r}
+(7.54 - 6.36) / (2 * qnorm(1-0.05/2, 0, 1)) 
+```
+
+We can see that the severely underestimate the standard deviation, so it might be worth using the calculating involving
+the t statistic instead of the z statistic.
+
+```{r}
+(log(UB_n) - log(LB_n)) / (2 * qt(1-0.1/2, 1)) 
+Std_lnX_n
+```
+
+The reason why we get smaller numbers for the estimated standard deviations is because the area outside of the 95% two tailed
+confidence interval is much larger using a t-dist with 1 degree of freedom. This means that the difference int he means are
+divided by a larger number, resulting in a smaller estimate for the standard deviation.
+
+Anyway! Using these parameters, we can simulate the possible loss of an event
+
+```{r}
+loss <- rep(0, 4)
+
+for(i in 1:length(loss)){
+    
+  # Say for the sake of example
+  # randn <- runif(1)
+  randn <- 0.025
+  
+  if(randn < P_n[i]){
+    loss[i] <- qlnorm(randn, E_lnX_n[i], Std_lnX_n[i])
+  }
+}
+
+loss
+```
+
+So, when an event occurs, we can now estimate our losses from it.
+
+```{r}
+est_loss <- sum(loss)
+
+est_loss
+```
+
+We can now simulate this many times and get a distribution
+
+```{r}
+n.iter <- 1e4
+
+est_loss_n <- rep(0, n.iter)
+
+for(j in 1:n.iter){
+  loss <- rep(0, 4)
+  for(i in 1:length(loss)){
+    randn <- runif(1)
+    if(randn < P_n[i]){
+      loss[i] <- qlnorm(randn, E_lnX_n[i], Std_lnX_n[i])
+    }
+  }
+  est_loss_n[j] <- sum(loss)
+}
+
+par(mfrow=c(1, 2))
+plot(density(est_loss_n, from=0.000001))
+plot(density(est_loss_n, from=0.000001), log='x')
+```
+
+We can obviously make this analysis more complex, but this is an interesting start.
+
+```{r}
+# Save vector for later
+dput(est_loss_n, file="./dat/estimate-losses_vector.pkl")
+```
+

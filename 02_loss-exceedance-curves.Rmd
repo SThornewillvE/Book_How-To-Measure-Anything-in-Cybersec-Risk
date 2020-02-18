@@ -1,0 +1,55 @@
+---
+title: 'Chapter 3: Model Now!'
+subtitle: 'Loss Exceedance Curves'
+author: "Simon Thornewill von Essen"
+date: "17 2 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+setwd("C:\\Users\\sthornewillvonessen\\Documents\\Online_Courses\\Book_How-To-Measure-Anything-in-Cybersec-Risk")
+```
+
+Let's try and do some post processing using the data that we simulated from the last Rmd file.
+
+```{r}
+est_loss_n <- dget("./dat/estimate-losses_vector.pkl")
+```
+
+Now, instead of plotting a density graph of the losses, we want to think about the probability of loss exceedance.
+
+```{r}
+min_loss <- 0
+max_loss <- max(est_loss_n)
+
+min_loss
+max_loss
+```
+
+So, now we can calculate our vector of losses
+
+```{r}
+x_loss <- seq(min_loss, max_loss, 200)
+
+head(x_loss)
+```
+
+Now, we want to calculate the probability
+
+```{r}
+n.vals <- length(est_loss_n)
+p_loss <- rep(0, length(x_loss))
+
+for(i in 1:length(p_loss)){
+  p <- sum(est_loss_n > x_loss[i])/n.vals
+  p_loss[i] <- p
+}
+
+plot(x_loss, p_loss, type="l", col="red")
+```
+
+Now that we have plotted our LEC, we can consider what kind of loss we are willing to tolerate. We can plot a loss excedance tolerance that shows what level of risk we are willing to take on.
+
+The LET is something that we can calculate for ourselves, by considering multiple losses and assigning a desired probability of occurance to them, we can then plot this line and compare it with the inherent loss in our LEC.
